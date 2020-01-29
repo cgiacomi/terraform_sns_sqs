@@ -3,7 +3,7 @@
 # ---------------------------------------------------------------------------------------------------------------------
 
 resource "aws_sns_topic" "user_updates" {
-  name = "user-updates-topic"
+    name = "user-updates-topic"
 }
 
 
@@ -12,14 +12,18 @@ resource "aws_sns_topic" "user_updates" {
 # ---------------------------------------------------------------------------------------------------------------------
 
 resource "aws_sqs_queue" "user_updates_queue" {
-  name = "user-updates-queue"
-  redrive_policy  = "{\"deadLetterTargetArn\":\"${aws_sqs_queue.user_updates_dl_queue.arn}\",\"maxReceiveCount\":5}"
-  visibility_timeout_seconds = 300
+    name = "user-updates-queue"
+    redrive_policy  = "{\"deadLetterTargetArn\":\"${aws_sqs_queue.user_updates_dl_queue.arn}\",\"maxReceiveCount\":5}"
+    visibility_timeout_seconds = 300
+
+    tags = {
+        Environment = "dev"
+    }
 }
 
 
 resource "aws_sqs_queue" "user_updates_dl_queue" {
-  name = "user-updates-dl-queue"
+    name = "user-updates-dl-queue"
 }
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -27,9 +31,9 @@ resource "aws_sqs_queue" "user_updates_dl_queue" {
 # ---------------------------------------------------------------------------------------------------------------------
 
 resource "aws_sqs_queue_policy" "user_updates_queue_policy" {
-  queue_url = "${aws_sqs_queue.user_updates_queue.id}"
+    queue_url = "${aws_sqs_queue.user_updates_queue.id}"
 
-  policy = <<POLICY
+    policy = <<POLICY
 {
   "Version": "2012-10-17",
   "Id": "sqspolicy",
@@ -56,7 +60,104 @@ POLICY
 # ---------------------------------------------------------------------------------------------------------------------
 
 resource "aws_sns_topic_subscription" "user_updates_sqs_target" {
-  topic_arn = "${aws_sns_topic.user_updates.arn}"
-  protocol  = "sqs"
-  endpoint  = "${aws_sqs_queue.user_updates_queue.arn}"
+    topic_arn = "${aws_sns_topic.user_updates.arn}"
+    protocol  = "sqs"
+    endpoint  = "${aws_sqs_queue.user_updates_queue.arn}"
+}
+
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+# LAMBDA ROLE & POLICIES
+# ---------------------------------------------------------------------------------------------------------------------
+
+resource "aws_iam_role" "lambda_role" {
+    name = "LambdaRole"
+    assume_role_policy = <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+        "Action": "sts:AssumeRole",
+        "Effect": "Allow",
+        "Principal": {
+            "Service": "lambda.amazonaws.com"
+        }
+    }
+  ]
+}
+EOF
+}
+
+resource "aws_iam_role_policy" "lambda_role_logs_policy" {
+    name = "LambdaRolePolicy"
+    role = "${aws_iam_role.lambda_role.id}"
+    policy = <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Action": [
+        "logs:CreateLogGroup",
+        "logs:CreateLogStream",
+        "logs:PutLogEvents"
+      ],
+      "Effect": "Allow",
+      "Resource": "*"
+    }
+  ]
+}
+EOF
+}
+
+resource "aws_iam_role_policy" "lambda_role_sqs_policy" {
+    name = "AllowSQSPermissions"
+    role = "${aws_iam_role.lambda_role.id}"
+    policy = <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Action": [
+        "sqs:ChangeMessageVisibility",
+        "sqs:DeleteMessage",
+        "sqs:GetQueueAttributes",
+        "sqs:ReceiveMessage"
+      ],
+      "Effect": "Allow",
+      "Resource": "*"
+    }
+  ]
+}
+EOF
+}
+
+# ---------------------------------------------------------------------------------------------------------------------
+# LAMBDA FUNCTION
+# ---------------------------------------------------------------------------------------------------------------------
+
+resource "aws_lambda_function" "user_updates_lambda" {
+    filename         = "${path.module}/lambda/example.zip"
+    function_name    = "hello_world_example"
+    role             = "${aws_iam_role.lambda_role.arn}"
+    handler          = "example.handler"
+    source_code_hash = "${data.archive_file.lambda_zip.output_base64sha256}"
+    runtime          = "nodejs12.x"
+
+    environment {
+        variables = {
+            foo = "bar"
+        }
+    }
+}
+
+# ---------------------------------------------------------------------------------------------------------------------
+# LAMBDA EVENT SOURCE
+# ---------------------------------------------------------------------------------------------------------------------
+
+resource "aws_lambda_event_source_mapping" "user_updates_lambda_event_source" {
+    event_source_arn = "${aws_sqs_queue.user_updates_queue.arn}"
+    enabled          = true
+    function_name    = "${aws_lambda_function.user_updates_lambda.arn}"
+    batch_size       = 1
 }
