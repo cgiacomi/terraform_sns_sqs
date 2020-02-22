@@ -1,6 +1,6 @@
-# Terraform SNS to SQS
+# Terraform SNS to SQS to Lambda
 
-The following is an AWS infrastructure POC using Terraform.
+The following is an AWS infrastructure as code tutorial using Terraform.
 
 ## Architecture
 
