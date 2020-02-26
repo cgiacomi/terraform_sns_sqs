@@ -2,6 +2,8 @@
 
 The following is an AWS infrastructure as code tutorial using Terraform.
 
+The original post can be found [here](https://christiangiacomi.com/posts/terraform-sns-sqs-lambda)
+
 ## Architecture
 
 SNS --> SQS --> LAMBDA
